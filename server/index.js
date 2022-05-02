@@ -1,7 +1,6 @@
 const mqtt = require("mqtt");
 const express = require("express");
 const app = express();
-const fs = require("fs");
 const cors = require("cors");
 const schedule = require("node-schedule");
 const { InfluxDB, Point, HttpError } = require("@influxdata/influxdb-client");
@@ -10,6 +9,7 @@ const loadDevices = require("./tools/loadDevices");
 const loadOptions = require("./tools/loadOptions");
 const handleMqttMessage = require("./tools/handleMqttMessage");
 const handleApiRequests = require("./tools/handleApiRequests");
+const makeDecisions = require("./tools/makeDecisions");
 
 const corsOptions = {
   origin: "*",
@@ -80,16 +80,6 @@ app.put("/devices", (req, res) => {
   handleApiRequests.devices.put(req, res, devices);
 });
 
-//Returns number of active devices with opened valve.
-function howMany() {
-  if (!devices[0]) return 0;
-  let count = 0;
-  for (let z = devices.length - 1; z >= 0; z -= 1) {
-    count += parseInt(devices[z].opened);
-  }
-  return count;
-}
-
 //Returns true when it's night according to hours set by user.
 function isnight() {
   const hours = new Date(Date.now()).getHours().toString();
@@ -129,82 +119,9 @@ function getSetTemp(device) {
 }
 
 //Decision backend loop.
-let settemp;
 setInterval(() => {
-  //Removing devices that were waiting for pairing if they are not doing so anymore.
-  for (let i = newDevices.length - 1; i >= 0; i -= 1) {
-    if (newDevices[i].alive > 0) {
-      newDevices[i].alive -= 1;
-    } else {
-      newDevices.splice(i, 1);
-    }
-  }
-
-  //Furnace
-  if (furnace.alive > 0) {
-    client.publish(options.mqttfurnacetopic + "/receive", "heartbeat");
-    furnace.alive -= 1;
-  } else furnace.on = 0;
-
-  //If there is no devices with open valve turn off the furnace - it never happens in normal circumstances only eg. when last device with open valve loose connection.
-  if (howMany() == 0 && furnace.on) {
-    client.publish(options.mqttfurnacetopic + "/receive", "off");
-    furnace.on = 0;
-  }
-
-  //Dealing with devices.
-  for (let i = devices.length - 1; i >= 0; i -= 1) {
-    if (devices[i].alive > 0) {
-      devices[i].alive -= 1;
-      //Setted temperature according to agenda.
-      settemp = getSetTemp(devices[i]);
-      //Heartbeat
-      client.publish(
-        devices[i].id,
-        "heartbeat:" + settemp + ";" + options.hysteresis
-      );
-      //If furnace is turned on we need to open the heater valve in rooms where temperature is below set temperature, and close the valve in those where temperature is above the set temperature hysteresis also turn off the furnace if temperatures in all rooms (in wich the valve was opened) is above this level.
-      if (furnace.on) {
-        //Opening the valve
-        if (
-          parseFloat(devices[i].temp) < parseFloat(settemp) &&
-          devices[i].opened == 0
-        ) {
-          client.publish(devices[i].id, "open");
-          devices[i].opened = 1;
-        }
-
-        //Closing the valve or if last room turning off furnace. - we want to keep the heater valve in the last room open.
-        else if (
-          parseFloat(devices[i].temp) >
-            parseFloat(settemp) + parseFloat(options.hysteresis) &&
-          devices[i].opened == 1
-        ) {
-          if (howMany() == 1) {
-            client.publish(options.mqttfurnacetopic + "/receive", "off");
-            furnace.on = 0;
-          } else {
-            client.publish(devices[i].id, "close");
-            devices[i].opened = 0;
-          }
-        }
-        //If the furnace is off we need to turn it on when the temperature in one or more rooms drop below the set temperature histeresis.
-      } else {
-        if (
-          parseFloat(devices[i].temp) <
-          parseFloat(settemp) - parseFloat(options.hysteresis)
-        ) {
-          if (devices[i].opened == 0) {
-            client.publish(devices[i].id, "open");
-          }
-          client.publish(options.mqttfurnacetopic + "/receive", "on");
-        }
-      }
-    } else {
-      devices[i].opened = 0; //If device is not alive assume the valve is closed.
-    }
-  }
-}, 60000);
+  makeDecisions(devices, newDevices, furnace, options, client, getSetTemp);
+}, 6000);
 
 //Writing into db
 if (options.usedb) {
