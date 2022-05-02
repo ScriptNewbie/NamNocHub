@@ -1,5 +1,6 @@
 const fs = require("fs");
-
+const getSetTemp = require("./getSetTemp");
+const isNight = require("./isNight");
 const Device = require("../classes/Device");
 
 const handleApiRequests = {
@@ -73,7 +74,7 @@ const handleApiRequests = {
     },
   },
   time: {
-    get: (req, res, isnight) => {
+    get: (req, res, options) => {
       const now = new Date(Date.now());
       let hours = now.getHours().toString();
       let minutes = now.getMinutes().toString();
@@ -83,14 +84,14 @@ const handleApiRequests = {
       let time = hours + ":" + minutes;
       const response = {
         time: time,
-        isNight: isnight(),
+        isNight: isNight(options),
         dayOfWeek: dayOfWeek,
       };
       res.send(response);
     },
   },
   devices: {
-    post: (req, res, devices, newDevices, mqtt, getSetTemp, hysteresis) => {
+    post: (req, res, devices, newDevices, mqtt, hysteresis) => {
       if (!req.body.id) return res.status(404).send({ error: 1 });
       if (!req.body.schedule) return res.status(404).send({ error: 2 });
       if (!req.body.name) return res.status(404).send({ error: 3 });

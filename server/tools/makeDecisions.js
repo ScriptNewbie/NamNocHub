@@ -1,11 +1,6 @@
-const makeDecisions = (
-  devices,
-  newDevices,
-  furnace,
-  options,
-  mqtt,
-  getSetTemp
-) => {
+const getSetTemp = require("./getSetTemp");
+
+const makeDecisions = (devices, newDevices, furnace, options, mqtt) => {
   //Returns number of active devices with opened valve.
   function howMany() {
     if (!devices[0]) return 0;

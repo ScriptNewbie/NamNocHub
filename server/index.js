@@ -57,7 +57,7 @@ app.get("/furnace", (req, res) => {
   res.send(furnace);
 });
 app.get("/time", (req, res) => {
-  handleApiRequests.time.get(req, res, isnight);
+  handleApiRequests.time.get(req, res, options);
 });
 app.put("/options", (res, req) => {
   handleApiRequests.options.put(res, req, options);
@@ -69,7 +69,6 @@ app.post("/devices", (req, res) => {
     devices,
     newDevices,
     client,
-    getSetTemp,
     options.hysteresis
   );
 });
@@ -80,47 +79,9 @@ app.put("/devices", (req, res) => {
   handleApiRequests.devices.put(req, res, devices);
 });
 
-//Returns true when it's night according to hours set by user.
-function isnight() {
-  const hours = new Date(Date.now()).getHours().toString();
-  let minutes = new Date(Date.now()).getMinutes().toString();
-  if (minutes.length === 1) minutes = "0" + minutes;
-  let now = hours + minutes;
-  now = parseInt(now);
-  if (
-    now >= parseInt(options.night) ||
-    (now >= 0 && now < parseInt(options.day))
-  )
-    return true;
-  return false;
-}
-function getSetTemp(device) {
-  const days = [
-    "sunday",
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
-  ];
-  const now = new Date(Date.now());
-  let timeInt = now.toLocaleTimeString();
-  timeInt = timeInt.slice(0, 5);
-  timeInt = parseInt(timeInt.replace(":", ""));
-
-  const schedule = { ...device.schedule[days[now.getDay()]] };
-  for (let i = 0; i < schedule.times.length; ++i) {
-    if (parseInt(schedule.times[i].end) > timeInt) {
-      return parseInt(schedule.times[i].temp);
-    }
-  }
-  return parseInt(schedule.lastTemp);
-}
-
 //Decision backend loop.
 setInterval(() => {
-  makeDecisions(devices, newDevices, furnace, options, client, getSetTemp);
+  makeDecisions(devices, newDevices, furnace, options, client);
 }, 6000);
 
 //Writing into db
