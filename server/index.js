@@ -82,7 +82,7 @@ app.put("/devices", (req, res) => {
 //Decision backend loop.
 setInterval(() => {
   makeDecisions(devices, newDevices, furnace, options, client);
-}, 6000);
+}, 60000);
 
 //Writing into db
 if (options.usedb) {
