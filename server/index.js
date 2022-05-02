@@ -149,16 +149,19 @@ app.get("/furnace", (req, res) => {
 });
 
 app.get("/time", (req, res) => {
-  let hours = new Date(Date.now()).getHours().toString();
-  let minutes = new Date(Date.now()).getMinutes().toString();
+  const now = new Date(Date.now());
+  let hours = now.getHours().toString();
+  let minutes = now.getMinutes().toString();
+  const dayOfWeek = now.getDay();
   if (minutes.length === 1) minutes = "0" + minutes;
   if (hours.length === 1) hours = "0" + hours;
-  let now = hours + ":" + minutes;
-  const time = {
-    time: now,
+  let time = hours + ":" + minutes;
+  const response = {
+    time: time,
     isNight: isnight(),
+    dayOfWeek: dayOfWeek,
   };
-  res.send(time);
+  res.send(response);
 });
 
 app.put("/options", (req, res) => {
