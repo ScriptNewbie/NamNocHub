@@ -1,12 +1,15 @@
 const mqtt = require("mqtt");
 const express = require("express");
 const app = express();
-const Device = require("./classes/Device");
-const NewDevice = require("./classes/NewDevice");
 const fs = require("fs");
 const cors = require("cors");
 const schedule = require("node-schedule");
 const { InfluxDB, Point, HttpError } = require("@influxdata/influxdb-client");
+
+const Device = require("./classes/Device");
+const loadDevices = require("./tools/loadDevices");
+const loadOptions = require("./tools/loadOptions");
+const handleMqttMessage = require("./tools/handleMqttMessage");
 
 const corsOptions = {
   origin: "*",
@@ -15,65 +18,10 @@ const corsOptions = {
 app.use(express.json());
 app.use(cors(corsOptions));
 
-let devices = []; //Stores devices set by user.
-const newdevices = []; //Stores devices that wait for setting up.
-//default options
-let options = {
-  day: 700,
-  night: 2200,
-  hysteresis: 0.2,
-  mqttaddress: "mqtt://127.0.0.1:1883",
-  mqtttopic: "NamNoc",
-  mqttuser: "",
-  mqttpassword: "",
-  mqttfurnacetopic: "furnace",
-  usedb: false,
-  influxdb: {
-    url: "",
-    organisation: "",
-    bucket: "",
-    key: "",
-  },
-};
+const devices = loadDevices(); //Stores devices set by user.
+const newDevices = []; //Stores devices that wait for setting up.
+const { options, optionsSetByUser } = loadOptions();
 const furnace = { on: 0, ip: "", alive: 0, timeStamp: 0 };
-let options_set_by_user = true;
-
-//Reading devices from file
-try {
-  devices = JSON.parse(
-    fs.readFileSync("./server/data/devices.json", {
-      encoding: "utf8",
-      flag: "r",
-    })
-  );
-} catch (e) {}
-
-devices.forEach((device) => {
-  device.opened = 0;
-  device.alive = 0;
-});
-
-//Reading options from file
-try {
-  options = JSON.parse(
-    fs.readFileSync("./server/data/options.json", {
-      encoding: "utf8",
-      flag: "r",
-    })
-  );
-} catch (e) {
-  options_set_by_user = false;
-}
-
-if (
-  options.mqttaddress.substring(0, 7) !== "mqtt://" &&
-  options.mqttaddress.substring(0, 8) !== "mqtts://"
-) {
-  console.log(
-    "You forgot mqtt:// or mqtts:// in the begining of mqtt adress. Setting default."
-  );
-  options.mqttaddress = "mqtt://127.0.0.1";
-}
 
 const client = mqtt.connect(options.mqttaddress, {
   username: options.mqttuser,
@@ -86,34 +34,7 @@ client.on("connect", () => {
 
 //Dealing with mqtt messages
 client.on("message", (topic, message) => {
-  if (topic == options.mqtttopic) {
-    const received = JSON.parse(message.toString());
-    const current = devices.find((c) => c.id === received.id);
-    if (!current) {
-      const current = newdevices.find((c) => c.id === received.id);
-      if (!current) {
-        newdevices.push(new NewDevice(received));
-      } else {
-        current.ip = received.ip;
-        current.temp = received.temp;
-        current.opened = received.opened;
-        current.timeStamp = received.timestamp;
-        current.alive = 5;
-      }
-    } else {
-      current.ip = received.ip;
-      current.temp = received.temp;
-      current.opened = received.opened;
-      current.timeStamp = received.timestamp;
-      current.alive = 5;
-    }
-  } else {
-    const received = JSON.parse(message.toString());
-    furnace.on = parseInt(received.on);
-    furnace.ip = received.ip;
-    furnace.timeStamp = received.timestamp;
-    furnace.alive = 5;
-  }
+  handleMqttMessage(topic, message, devices, newDevices, furnace, options);
 });
 
 //Web backend
@@ -122,7 +43,7 @@ app.get("/devices", (req, res) => {
 });
 
 app.get("/newdevices", (req, res) => {
-  res.send(newdevices);
+  res.send(newDevices);
 });
 
 app.get("/options", (req, res) => {
@@ -137,7 +58,7 @@ app.get("/options", (req, res) => {
 });
 
 app.get("/options/set", (req, res) => {
-  res.send(options_set_by_user);
+  res.send(optionsSetByUser);
 });
 
 app.get("/mqttConnected", (req, res) => {
@@ -227,10 +148,10 @@ app.post("/devices", (req, res) => {
   if (!req.body.schedule) return res.status(404).send({ error: 2 });
   if (!req.body.name) return res.status(404).send({ error: 3 });
 
-  const current = newdevices.find((c) => c.id === req.body.id);
+  const current = newDevices.find((c) => c.id === req.body.id);
   if (!current) return res.status(404).send({ error: 1 });
   const temp = new Device(current, req.body.schedule, req.body.name);
-  newdevices.splice(newdevices.indexOf(current), 1);
+  newDevices.splice(newDevices.indexOf(current), 1);
   devices.push(temp);
   fs.writeFile(
     "./server/data/devices.json",
@@ -334,11 +255,11 @@ function getSetTemp(device) {
 let settemp;
 setInterval(() => {
   //Removing devices that were waiting for pairing if they are not doing so anymore.
-  for (let i = newdevices.length - 1; i >= 0; i -= 1) {
-    if (newdevices[i].alive > 0) {
-      newdevices[i].alive -= 1;
+  for (let i = newDevices.length - 1; i >= 0; i -= 1) {
+    if (newDevices[i].alive > 0) {
+      newDevices[i].alive -= 1;
     } else {
-      newdevices.splice(i, 1);
+      newDevices.splice(i, 1);
     }
   }
 
