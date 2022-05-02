@@ -6,10 +6,10 @@ const cors = require("cors");
 const schedule = require("node-schedule");
 const { InfluxDB, Point, HttpError } = require("@influxdata/influxdb-client");
 
-const Device = require("./classes/Device");
 const loadDevices = require("./tools/loadDevices");
 const loadOptions = require("./tools/loadOptions");
 const handleMqttMessage = require("./tools/handleMqttMessage");
+const handleApiRequests = require("./tools/handleApiRequests");
 
 const corsOptions = {
   origin: "*",
@@ -41,166 +41,43 @@ client.on("message", (topic, message) => {
 app.get("/devices", (req, res) => {
   res.send(devices);
 });
-
 app.get("/newdevices", (req, res) => {
   res.send(newDevices);
 });
-
 app.get("/options", (req, res) => {
-  const response = { ...options };
-  let temp = response.day.toString();
-  if (temp.length === 3) temp = "0" + temp;
-  response.day = temp.slice(0, 2) + ":" + temp.slice(2);
-  temp = response.night.toString();
-  if (temp.length === 3) temp = "0" + temp;
-  response.night = temp.slice(0, 2) + ":" + temp.slice(2);
-  res.send(response);
+  handleApiRequests.options.get(req, res, options);
 });
-
 app.get("/options/set", (req, res) => {
   res.send(optionsSetByUser);
 });
-
 app.get("/mqttConnected", (req, res) => {
   res.send(client.connected);
 });
-
 app.get("/furnace", (req, res) => {
   res.send(furnace);
 });
-
 app.get("/time", (req, res) => {
-  const now = new Date(Date.now());
-  let hours = now.getHours().toString();
-  let minutes = now.getMinutes().toString();
-  const dayOfWeek = now.getDay();
-  if (minutes.length === 1) minutes = "0" + minutes;
-  if (hours.length === 1) hours = "0" + hours;
-  let time = hours + ":" + minutes;
-  const response = {
-    time: time,
-    isNight: isnight(),
-    dayOfWeek: dayOfWeek,
-  };
-  res.send(response);
+  handleApiRequests.time.get(req, res, isnight);
 });
-
-app.put("/options", (req, res) => {
-  if (req.body.day) {
-    let day = req.body.day.replace(":", "");
-    day = parseInt(day);
-    if (day) options.day = day;
-  }
-  if (req.body.night) {
-    let night = req.body.night.replace(":", "");
-    night = parseInt(night);
-    if (night) options.night = night;
-  }
-  if (req.body.hysteresis) {
-    let hysteresis = req.body.hysteresis;
-    if (typeof hysteresis === "string") {
-      hysteresis = hysteresis.replace(",", ".");
-    }
-    hysteresis = parseFloat(hysteresis);
-    if (hysteresis) options.hysteresis = hysteresis;
-  }
-  if (typeof req.body.mqttaddress === "string")
-    options.mqttaddress = req.body.mqttaddress;
-  if (typeof req.body.mqtttopic === "string")
-    options.mqtttopic = req.body.mqtttopic;
-  if (typeof req.body.mqttuser === "string")
-    options.mqttuser = req.body.mqttuser;
-  if (typeof req.body.mqttpassword === "string")
-    options.mqttpassword = req.body.mqttpassword;
-  if (typeof req.body.mqttfurnacetopic === "string")
-    options.mqttfurnacetopic = req.body.mqttfurnacetopic;
-  if (typeof req.body.usedb === "boolean") options.usedb = req.body.usedb;
-  if (req.body.influxdb) {
-    if (typeof req.body.influxdb.bucket === "string")
-      options.influxdb.bucket = req.body.influxdb.bucket;
-    if (typeof req.body.influxdb.organisation === "string")
-      options.influxdb.organisation = req.body.influxdb.organisation;
-    if (typeof req.body.influxdb.url === "string")
-      options.influxdb.url = req.body.influxdb.url;
-    if (typeof req.body.influxdb.key === "string")
-      options.influxdb.key = req.body.influxdb.key;
-  }
-  fs.writeFile(
-    "./server/data/options.json",
-    JSON.stringify(options),
-    function (err) {
-      if (err) console.log(err);
-      process.exit();
-    }
-  );
-  const response = { ...options };
-  let temp = response.day.toString();
-  if (temp.length === 3) temp = "0" + temp;
-  response.day = temp.slice(0, 2) + ":" + temp.slice(2);
-  temp = response.night.toString();
-  if (temp.length === 3) temp = "0" + temp;
-  response.night = temp.slice(0, 2) + ":" + temp.slice(2);
-  res.send(response);
+app.put("/options", (res, req) => {
+  handleApiRequests.options.put(res, req, options);
 });
-
 app.post("/devices", (req, res) => {
-  if (!req.body.id) return res.status(404).send({ error: 1 });
-  if (!req.body.schedule) return res.status(404).send({ error: 2 });
-  if (!req.body.name) return res.status(404).send({ error: 3 });
-
-  const current = newDevices.find((c) => c.id === req.body.id);
-  if (!current) return res.status(404).send({ error: 1 });
-  const temp = new Device(current, req.body.schedule, req.body.name);
-  newDevices.splice(newDevices.indexOf(current), 1);
-  devices.push(temp);
-  fs.writeFile(
-    "./server/data/devices.json",
-    JSON.stringify(devices),
-    function (err) {
-      if (err) console.log(err);
-    }
+  handleApiRequests.devices.post(
+    req,
+    res,
+    devices,
+    newDevices,
+    client,
+    getSetTemp,
+    options.hysteresis
   );
-  client.publish(
-    temp.id,
-    "heartbeat:" + getSetTemp(temp) + ";" + options.hysteresis
-  );
-  res.send(temp);
 });
-
 app.delete("/devices", (req, res) => {
-  if (!req.body.id) return res.status(404).send({ error: "No id specified!" });
-  const current = devices.find((c) => c.id === req.body.id);
-  if (!current)
-    return res.status(404).send({ error: "No device with this id exists!" });
-  devices.splice(devices.indexOf(current), 1);
-  fs.writeFile(
-    "./server/data/devices.json",
-    JSON.stringify(devices),
-    function (err) {
-      if (err) console.log(err);
-    }
-  );
-  res.send(current);
+  handleApiRequests.devices.delete(req, res, devices);
 });
-
 app.put("/devices", (req, res) => {
-  if (!req.body.id) return res.status(404).send({ error: 1 });
-  if (!req.body.schedule) return res.status(404).send({ error: 2 });
-  if (!req.body.name) return res.status(404).send({ error: 3 });
-  const current = devices.find((c) => c.id === req.body.id);
-  if (!current) return res.status(404).send({ error: 4 });
-
-  current.name = req.body.name;
-  current.schedule = req.body.schedule;
-
-  fs.writeFile(
-    "./server/data/devices.json",
-    JSON.stringify(devices),
-    function (err) {
-      if (err) console.log(err);
-    }
-  );
-  res.send(current);
+  handleApiRequests.devices.put(req, res, devices);
 });
 
 //Returns number of active devices with opened valve.
