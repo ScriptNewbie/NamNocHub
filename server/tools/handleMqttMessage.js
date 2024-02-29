@@ -1,5 +1,9 @@
 const NewDevice = require("../classes/NewDevice");
 
+const getTimestamp = () => {
+  return Math.floor(new Date().getTime() / 1000);
+};
+
 const handleMqttMessage = (
   topic,
   message,
@@ -19,14 +23,14 @@ const handleMqttMessage = (
         current.ip = received.ip;
         current.temp = received.temp;
         current.opened = received.opened;
-        current.timeStamp = received.timestamp;
+        current.timeStamp = getTimestamp();
         current.alive = 5;
       }
     } else {
       current.ip = received.ip;
       current.temp = received.temp;
       current.opened = received.opened;
-      current.timeStamp = received.timestamp;
+      current.timeStamp = getTimestamp();
       current.alive = 5;
     }
   } else {
