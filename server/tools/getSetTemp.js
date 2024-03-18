@@ -16,10 +16,10 @@ function getSetTemp(device) {
   const schedule = { ...device.schedule[days[now.getDay()]] };
   for (let i = 0; i < schedule.times.length; ++i) {
     if (parseInt(schedule.times[i].end) > timeInt) {
-      return parseInt(schedule.times[i].temp);
+      return parseFloat(schedule.times[i].temp);
     }
   }
-  return parseInt(schedule.lastTemp);
+  return parseFloat(schedule.lastTemp);
 }
 
 module.exports = getSetTemp;
