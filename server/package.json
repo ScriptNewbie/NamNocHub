@@ -17,7 +17,7 @@
   },
   "overrides": {
     "body-parser": "1.20.6",
-    "brace-expansion": "1.1.18",
+    "brace-expansion": "1.1.21",
     "cookie": "0.7.1",
     "minimatch": "3.1.4",
     "path-to-regexp": "0.1.13",
