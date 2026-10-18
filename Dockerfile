@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:22-alpine
 RUN npm install -g serve
 RUN addgroup namnoc && adduser -S -G namnoc namnoc
 USER namnoc
