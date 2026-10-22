@@ -1,9 +1,13 @@
-FROM node:22-alpine
+# Pin the October 2026 Node.js security release (CVE-2026-111497 and the
+# other issues in that release). node:22-alpine currently resolves to this
+# same digest, but a floating tag can reuse a cached 22.23.3 layer.
+FROM node:22.23.4-alpine
 RUN apk add --no-cache --upgrade openssl zlib
-# node:22-alpine ships npm 10.9.9, the final npm 10 release. That copy still
-# vendors vulnerable brace-expansion, ip-address, pacote, picomatch, sigstore,
-# http-cache-semantics, and postcss-selector-parser. npm 11.21.1 vendors the
-# patched releases. npm 12.2.0 reintroduces several of them, so stay on 11.21.1.
+# node:22.23.4-alpine still ships npm 10.9.9, the final npm 10 release. That
+# copy vendors vulnerable brace-expansion, ip-address, pacote, picomatch,
+# sigstore, http-cache-semantics, and postcss-selector-parser. npm 11.21.1
+# vendors the patched releases. Rechecked 2026-10-22: npm 12.2.1 is also
+# clean, but it is a major upgrade this image does not need.
 # serve 14.2.6 depends on compression 1.8.1 (CVE-2026-87776); the override
 # installs 1.8.2 because no serve release depends on the patched compression yet.
 RUN npm install -g npm@11.21.1 \
